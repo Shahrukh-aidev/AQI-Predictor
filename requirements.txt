@@ -1,0 +1,34 @@
+numpy
+pandas
+
+scikit-learn
+tensorflow
+xgboost
+
+#data collection
+requests
+
+#visualization
+matplotlib
+plotly
+
+#explainability
+shap
+
+#feature store
+hopsworks
+
+# Web app
+streamlit
+flask
+
+# Utilities
+python-dotenv
+joblib
+
+# Testing
+pytest
+
+# Notebook
+jupyter
+ipykernel
