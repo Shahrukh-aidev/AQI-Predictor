@@ -1,33 +1,109 @@
 name: Upload Features to Hopsworks
 
 on:
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
 
 jobs:
   upload:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      # --------------------------------------------------
+      # 1. Checkout repository
+      # --------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
+      # --------------------------------------------------
+      # 2. Set up Python
+      # --------------------------------------------------
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
 
+      # --------------------------------------------------
+      # 3. Install dependencies
+      # --------------------------------------------------
       - name: Install dependencies
         run: |
-          pip install hopsworks deltalake python-dotenv pyarrow pandas numpy
+          python -m pip install --upgrade pip
 
+          python -m pip install \
+            "hopsworks==5.0.3" \
+            "deltalake==1.6.2" \
+            python-dotenv \
+            pyarrow \
+            pandas \
+            numpy
+
+      # --------------------------------------------------
+      # 4. Verify installed versions
+      # --------------------------------------------------
+      - name: Verify environment
+        run: |
+          python --version
+          python -c "import hopsworks; print('Hopsworks:', hopsworks.__version__)"
+          python -c "import hsfs; print('HSFS:', hsfs.__version__)"
+          python -c "import deltalake; print('DeltaLake:', deltalake.__version__)"
+
+      # --------------------------------------------------
+      # 5. Run historical backfill
+      # --------------------------------------------------
       - name: Run historical backfill
-        run: python src/pipelines/historical_backfill.py
+        run: |
+          python src/pipelines/historical_backfill.py
         env:
           OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
           AQICN_API_KEY: ${{ secrets.AQICN_API_KEY }}
 
+      # --------------------------------------------------
+      # 6. Verify training dataset
+      # --------------------------------------------------
+      - name: Verify training data
+        run: |
+          python -c "
+          import os
+          import pandas as pd
+
+          path = 'data/processed/training_data.parquet'
+
+          if not os.path.exists(path):
+              raise FileNotFoundError(
+                  f'Training data not found: {path}'
+              )
+
+          df = pd.read_parquet(path)
+
+          print('Training data found')
+          print('Rows:', len(df))
+          print('Columns:', len(df.columns))
+          print('Column names:')
+          print(df.columns.tolist())
+
+          required = ['city', 'timestamp']
+
+          missing = [
+              column for column in required
+              if column not in df.columns
+          ]
+
+          if missing:
+              raise ValueError(
+                  f'Missing required columns: {missing}'
+              )
+
+          print('Required columns verified')
+          "
+
+      # --------------------------------------------------
+      # 7. Upload features to Hopsworks
+      # --------------------------------------------------
       - name: Upload to Hopsworks
-        run: python -m src.features.hopsworks_upload
+        run: |
+          python -m src.features.hopsworks_upload
         env:
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
           HOPSWORKS_PROJECT_NAME: ${{ secrets.HOPSWORKS_PROJECT_NAME }}
