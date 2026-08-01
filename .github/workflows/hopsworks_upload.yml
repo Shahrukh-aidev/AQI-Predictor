@@ -38,7 +38,12 @@ jobs:
           python -c "import pandas as pd; df=pd.read_parquet('data/processed/training_data.parquet'); print('Rows:', len(df)); print('Columns:', len(df.columns)); print(df.columns.tolist())"
 
       - name: Upload features to Hopsworks
-        run: python -m src.features.hopsworks_upload
         env:
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
           HOPSWORKS_PROJECT_NAME: ${{ secrets.HOPSWORKS_PROJECT_NAME }}
+        run: |
+          if [ -z "$HOPSWORKS_API_KEY" ] || [ -z "$HOPSWORKS_PROJECT_NAME" ]; then
+            echo "Missing Hopsworks secrets; skipping upload."
+            exit 0
+          fi
+          python -m src.features.hopsworks_upload

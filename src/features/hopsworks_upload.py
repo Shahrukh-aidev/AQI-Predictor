@@ -131,7 +131,7 @@ def upload_feature_group():
         f"Uploading {len(df)} rows..."
     )
 
-    fg.insert(df)
+    fg.insert(df, overwrite=True, operation="upsert")
 
     logger.info(
         "Feature upload completed successfully!"
