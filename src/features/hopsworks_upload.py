@@ -1,5 +1,6 @@
 import os
 import re
+import time
 
 import hopsworks
 import pandas as pd
@@ -131,11 +132,27 @@ def upload_feature_group():
         f"Uploading {len(df)} rows..."
     )
 
-    fg.insert(df, overwrite=True, operation="upsert")
+    last_error = None
+    for attempt in range(3):
+        try:
+            fg.insert(
+                df,
+                overwrite=True,
+                operation="upsert",
+                write_options={"wait_for_job": True},
+            )
+            logger.info(
+                "Feature upload completed successfully!"
+            )
+            return
+        except Exception as exc:
+            last_error = exc
+            logger.warning(
+                f"Upload attempt {attempt + 1} failed: {exc}. Retrying..."
+            )
+            time.sleep(5)
 
-    logger.info(
-        "Feature upload completed successfully!"
-    )
+    raise RuntimeError(f"Feature upload failed after 3 attempts: {last_error}")
 
 
 if __name__ == "__main__":
