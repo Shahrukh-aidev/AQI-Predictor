@@ -1,6 +1,9 @@
 import pandas as pd
 
-from src.features.hopsworks_upload import normalize_column_names
+from src.features.hopsworks_upload import (
+    build_feature_group_name,
+    normalize_column_names,
+)
 
 
 def test_normalize_column_names_standardizes_and_strips_spaces():
@@ -15,3 +18,9 @@ def test_normalize_column_names_standardizes_and_strips_spaces():
     normalized = normalize_column_names(df)
 
     assert normalized.columns.tolist() == ["city_name", "timestamp", "pm2_5"]
+
+
+def test_build_feature_group_name_uses_github_run_id(monkeypatch):
+    monkeypatch.setenv("GITHUB_RUN_ID", "12345")
+
+    assert build_feature_group_name() == "aqi_features_12345"

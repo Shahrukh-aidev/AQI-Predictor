@@ -20,6 +20,16 @@ def normalize_column_names(df):
     return df
 
 
+def build_feature_group_name():
+    """Build a run-specific feature group name to avoid stale Hopsworks metadata."""
+    run_id = os.getenv("GITHUB_RUN_ID") or os.getenv("GITHUB_RUN_NUMBER")
+    if run_id:
+        return f"aqi_features_{run_id}"
+
+    timestamp = pd.Timestamp.utcnow().strftime("%Y%m%d%H%M%S")
+    return f"aqi_features_{timestamp}"
+
+
 def upload_feature_group():
     # ---------------------------------------------------------
     # Load environment variables
@@ -110,35 +120,35 @@ def upload_feature_group():
     # ---------------------------------------------------------
     logger.info("Creating feature group...")
 
-    fg = fs.get_or_create_feature_group(
-        name="aqi_features",
-        version=1,
-        description="AQI prediction features",
-        primary_key=["city", "timestamp"],
-        event_time="timestamp",
-        online_enabled=False,
-        stream=False,
-    )
-
-    logger.info(
-        f"Feature group: {fg.name}, "
-        f"version: {fg.version}"
-    )
-
-    # ---------------------------------------------------------
-    # Upload data
-    # ---------------------------------------------------------
-    logger.info(
-        f"Uploading {len(df)} rows..."
-    )
-
     last_error = None
     for attempt in range(3):
+        feature_group_name = build_feature_group_name()
+        logger.info(f"Creating feature group '{feature_group_name}'...")
+
         try:
+            fg = fs.get_or_create_feature_group(
+                name=feature_group_name,
+                version=1,
+                description="AQI prediction features",
+                primary_key=["city", "timestamp"],
+                event_time="timestamp",
+                online_enabled=False,
+                stream=False,
+            )
+
+            logger.info(
+                f"Feature group: {fg.name}, "
+                f"version: {fg.version}"
+            )
+
+            logger.info(
+                f"Uploading {len(df)} rows..."
+            )
+
             fg.insert(
                 df,
                 overwrite=True,
-                operation="upsert",
+                operation="insert",
                 write_options={"wait_for_job": True},
             )
             logger.info(
@@ -148,7 +158,7 @@ def upload_feature_group():
         except Exception as exc:
             last_error = exc
             logger.warning(
-                f"Upload attempt {attempt + 1} failed: {exc}. Retrying..."
+                f"Upload attempt {attempt + 1} failed: {exc}. Retrying with a fresh feature group name..."
             )
             time.sleep(5)
 
