@@ -1,68 +1,97 @@
-"""
-Upload training features to Hopsworks Feature Store.
-"""
-
 import os
-
-import hopsworks
 import pandas as pd
+import hopsworks
+
 from dotenv import load_dotenv
 
 from src.utils.logger import logger
 
 
-load_dotenv()
-
-
 def upload_feature_group():
+    # ---------------------------------------------------------
+    # Load environment variables
+    # ---------------------------------------------------------
+    load_dotenv()
+
+    api_key = os.getenv("HOPSWORKS_API_KEY")
+    project_name = os.getenv("HOPSWORKS_PROJECT_NAME")
+
+    if not api_key:
+        raise ValueError("HOPSWORKS_API_KEY is not set")
+
+    if not project_name:
+        raise ValueError("HOPSWORKS_PROJECT_NAME is not set")
+
+    # ---------------------------------------------------------
+    # Connect to Hopsworks
+    # ---------------------------------------------------------
     logger.info("Connecting to Hopsworks...")
 
     project = hopsworks.login(
-        api_key_value=os.getenv("HOPSWORKS_API_KEY"),
-        project=os.getenv("HOPSWORKS_PROJECT_NAME"),
+        api_key_value=api_key,
+        project=project_name,
     )
 
     fs = project.get_feature_store()
 
+    # ---------------------------------------------------------
+    # Load training data
+    # ---------------------------------------------------------
     logger.info("Loading training data...")
 
-    df = pd.read_parquet(
-        "data/processed/training_data.parquet"
-    )
+    ddata_path = "data/processed/training_data.parquet"
 
-    # Hopsworks requires timestamp to be timezone-naive.
-    df["timestamp"] = pd.to_datetime(
-        df["timestamp"]
-    ).dt.tz_localize(None)
+    if not os.path.exists(data_path):
+        raise FileNotFoundError(
+            f"Training data not found: {data_path}"
+        )
 
+    df = pd.read_csv(data_path)
+
+    if df.empty:
+        raise ValueError("Training data is empty")
+
+    logger.info(f"Loaded {len(df)} rows and {len(df.columns)} columns")
+
+    # ---------------------------------------------------------
+    # Clean column names
+    # ---------------------------------------------------------
+    df.columns = [
+        str(col)
+        .strip()
+        .lower()
+        .replace(" ", "_")
+        .replace("-", "_")
+    ]
+
+    # ---------------------------------------------------------
+    # Create / get Feature Group
+    # ---------------------------------------------------------
     logger.info("Creating feature group...")
 
-    # Version 2 is intentional.
-    #
-    # Version 1 was created with DELTA and failed during fg.insert()
-    # with:
-    # Generic HdfsObjectStore error
-    # RPC listener disconnected
-    #
-    # Therefore, use a new feature-group version without Delta.
     fg = fs.get_or_create_feature_group(
         name="aqi_features",
-        version=2,
+        version=1,
+        description="AQI prediction features",
         primary_key=["city", "timestamp"],
         event_time="timestamp",
-        time_travel_format="NONE",
-        online_enabled=False,
-        description="AQI + weather features for Pakistani cities",
+        time_travel_format="DELTA",
     )
-
-    logger.info("Uploading %d rows...", len(df))
-
-    # Keep the normal insert.
-    fg.insert(df)
 
     logger.info(
-        "Upload complete! Feature group ready at Hopsworks."
+        f"Feature group: {fg.name}, "
+        f"version: {fg.version}, "
+        f"time travel: {fg.time_travel_format}"
     )
+
+    # ---------------------------------------------------------
+    # Upload data
+    # ---------------------------------------------------------
+    logger.info(f"Uploading {len(df)} rows...")
+
+    fg.insert(df)
+
+    logger.info("Feature upload completed successfully!")
 
 
 if __name__ == "__main__":
