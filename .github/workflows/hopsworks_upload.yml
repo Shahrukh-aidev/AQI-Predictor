@@ -21,7 +21,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install \
             hopsworks==5.0.3 \
-            hsfs==5.0.3 \
             deltalake==1.6.2 \
             python-dotenv \
             pyarrow \
