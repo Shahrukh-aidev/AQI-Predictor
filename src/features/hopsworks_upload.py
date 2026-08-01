@@ -3,10 +3,13 @@ Upload training features to Hopsworks Feature Store.
 """
 
 import os
-import pandas as pd
+
 import hopsworks
+import pandas as pd
 from dotenv import load_dotenv
+
 from src.utils.logger import logger
+
 
 load_dotenv()
 
@@ -24,12 +27,15 @@ def upload_feature_group():
 
     logger.info("Loading training data...")
 
-    df = pd.read_parquet("data/processed/training_data.parquet")
+    df = pd.read_parquet(
+        "data/processed/training_data.parquet"
+    )
 
-    # Hopsworks needs timestamp as datetime without timezone
-    df["timestamp"] = pd.to_datetime(
-        df["timestamp"]
-    ).dt.tz_localize(None)
+    # Hopsworks expects a timezone-naive timestamp.
+    df["timestamp"] = (
+        pd.to_datetime(df["timestamp"])
+        .dt.tz_localize(None)
+    )
 
     logger.info("Creating feature group...")
 
@@ -38,17 +44,23 @@ def upload_feature_group():
         version=1,
         primary_key=["city", "timestamp"],
         event_time="timestamp",
-        online_enabled=False,
-        time_travel_format="DELTA",
         description="AQI + weather features for Pakistani cities",
+        time_travel_format="NONE",
     )
 
-    logger.info("Uploading %d rows...", len(df))
+    logger.info(
+        "Uploading %d rows...",
+        len(df),
+    )
 
     fg.insert(df)
 
     logger.info("Upload complete!")
-    print("Feature group 'aqi_features' uploaded successfully.")
+
+    print(
+        f"Feature group 'aqi_features' "
+        f"uploaded with {len(df)} rows."
+    )
 
 
 if __name__ == "__main__":
