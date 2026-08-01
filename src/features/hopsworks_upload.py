@@ -1,10 +1,22 @@
 import os
+import re
 
 import hopsworks
 import pandas as pd
 from dotenv import load_dotenv
 
 from src.utils.logger import logger
+
+
+def normalize_column_names(df):
+    """Normalize DataFrame column names for Hopsworks compatibility."""
+    df = df.copy()
+    df.columns = [
+        re.sub(r"[^a-z0-9]+", "_", str(col).strip().lower())
+        .strip("_")
+        for col in df.columns
+    ]
+    return df
 
 
 def upload_feature_group():
@@ -58,14 +70,7 @@ def upload_feature_group():
     # ---------------------------------------------------------
     # Clean column names
     # ---------------------------------------------------------
-    df.columns = [
-        str(col)
-        .strip()
-        .lower()
-        .replace(" ", "_")
-        .replace("-", "_")
-        for col in df.columns
-    ]
+    df = normalize_column_names(df)
 
     logger.info(
         f"Columns: {df.columns.tolist()}"
@@ -74,14 +79,10 @@ def upload_feature_group():
     # ---------------------------------------------------------
     # Validate required columns
     # ---------------------------------------------------------
-    required_columns = [
-        "city",
-        "timestamp",
-    ]
+    required_columns = ["city", "timestamp"]
 
     missing_columns = [
-        col
-        for col in required_columns
+        col for col in required_columns
         if col not in df.columns
     ]
 
@@ -100,26 +101,7 @@ def upload_feature_group():
 
     if df["timestamp"].isna().any():
         raise ValueError(
-            "Some timestamp values could not be converted "
-            "to datetime."
-        )
-
-    # ---------------------------------------------------------
-    # Remove duplicate primary keys
-    # ---------------------------------------------------------
-    duplicate_count = df.duplicated(
-        subset=["city", "timestamp"]
-    ).sum()
-
-    if duplicate_count > 0:
-        logger.warning(
-            f"Removing {duplicate_count} duplicate "
-            f"(city, timestamp) rows."
-        )
-
-        df = df.drop_duplicates(
-            subset=["city", "timestamp"],
-            keep="last",
+            "Some timestamp values could not be converted to datetime."
         )
 
     # ---------------------------------------------------------
@@ -149,13 +131,7 @@ def upload_feature_group():
         f"Uploading {len(df)} rows..."
     )
 
-    fg.insert(
-        df,
-        write_options={
-            "wait_for_job": False,
-            "use_spark": False,
-        },
-    )
+    fg.insert(df)
 
     logger.info(
         "Feature upload completed successfully!"
