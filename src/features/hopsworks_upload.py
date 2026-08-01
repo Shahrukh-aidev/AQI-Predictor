@@ -116,13 +116,13 @@ def upload_feature_group():
         description="AQI prediction features",
         primary_key=["city", "timestamp"],
         event_time="timestamp",
-        time_travel_format="DELTA",
+        online_enabled=False,
+        stream=False,
     )
 
     logger.info(
         f"Feature group: {fg.name}, "
-        f"version: {fg.version}, "
-        f"time travel: {fg.time_travel_format}"
+        f"version: {fg.version}"
     )
 
     # ---------------------------------------------------------
