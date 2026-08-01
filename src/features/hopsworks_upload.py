@@ -64,6 +64,7 @@ def upload_feature_group():
         .lower()
         .replace(" ", "_")
         .replace("-", "_")
+        for col in df.columns
     ]
 
     logger.info(
@@ -73,10 +74,14 @@ def upload_feature_group():
     # ---------------------------------------------------------
     # Validate required columns
     # ---------------------------------------------------------
-    required_columns = ["city", "timestamp"]
+    required_columns = [
+        "city",
+        "timestamp",
+    ]
 
     missing_columns = [
-        col for col in required_columns
+        col
+        for col in required_columns
         if col not in df.columns
     ]
 
@@ -95,7 +100,26 @@ def upload_feature_group():
 
     if df["timestamp"].isna().any():
         raise ValueError(
-            "Some timestamp values could not be converted to datetime."
+            "Some timestamp values could not be converted "
+            "to datetime."
+        )
+
+    # ---------------------------------------------------------
+    # Remove duplicate primary keys
+    # ---------------------------------------------------------
+    duplicate_count = df.duplicated(
+        subset=["city", "timestamp"]
+    ).sum()
+
+    if duplicate_count > 0:
+        logger.warning(
+            f"Removing {duplicate_count} duplicate "
+            f"(city, timestamp) rows."
+        )
+
+        df = df.drop_duplicates(
+            subset=["city", "timestamp"],
+            keep="last",
         )
 
     # ---------------------------------------------------------
@@ -125,7 +149,13 @@ def upload_feature_group():
         f"Uploading {len(df)} rows..."
     )
 
-    fg.insert(df)
+    fg.insert(
+        df,
+        write_options={
+            "wait_for_job": False,
+            "use_spark": False,
+        },
+    )
 
     logger.info(
         "Feature upload completed successfully!"
