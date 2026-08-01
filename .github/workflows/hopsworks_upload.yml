@@ -8,30 +8,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: pip install hopsworks deltalake python-dotenv pyarrow pandas numpy
-
-      - name: Upload to Hopsworks
-        run: python -m src.features.hopsworks_upload
-        env:
-          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
-          HOPSWORKS_PROJECT_NAME: ${{ secrets.HOPSWORKS_PROJECT_NAME }}name: Upload Features to Hopsworks
-
-on:
-  workflow_dispatch:
-
-jobs:
-  upload:
-    runs-on: ubuntu-latest
-
-    steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
