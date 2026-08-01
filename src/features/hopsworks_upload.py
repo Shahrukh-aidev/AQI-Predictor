@@ -1,7 +1,7 @@
 import os
-import pandas as pd
-import hopsworks
 
+import hopsworks
+import pandas as pd
 from dotenv import load_dotenv
 
 from src.utils.logger import logger
@@ -39,19 +39,21 @@ def upload_feature_group():
     # ---------------------------------------------------------
     logger.info("Loading training data...")
 
-    ddata_path = "data/processed/training_data.parquet"
+    data_path = "data/processed/training_data.parquet"
 
     if not os.path.exists(data_path):
         raise FileNotFoundError(
             f"Training data not found: {data_path}"
         )
 
-    df = pd.read_csv(data_path)
+    df = pd.read_parquet(data_path)
 
     if df.empty:
         raise ValueError("Training data is empty")
 
-    logger.info(f"Loaded {len(df)} rows and {len(df.columns)} columns")
+    logger.info(
+        f"Loaded {len(df)} rows and {len(df.columns)} columns"
+    )
 
     # ---------------------------------------------------------
     # Clean column names
@@ -63,6 +65,38 @@ def upload_feature_group():
         .replace(" ", "_")
         .replace("-", "_")
     ]
+
+    logger.info(
+        f"Columns: {df.columns.tolist()}"
+    )
+
+    # ---------------------------------------------------------
+    # Validate required columns
+    # ---------------------------------------------------------
+    required_columns = ["city", "timestamp"]
+
+    missing_columns = [
+        col for col in required_columns
+        if col not in df.columns
+    ]
+
+    if missing_columns:
+        raise ValueError(
+            f"Missing required columns: {missing_columns}"
+        )
+
+    # ---------------------------------------------------------
+    # Ensure timestamp is datetime
+    # ---------------------------------------------------------
+    df["timestamp"] = pd.to_datetime(
+        df["timestamp"],
+        errors="coerce",
+    )
+
+    if df["timestamp"].isna().any():
+        raise ValueError(
+            "Some timestamp values could not be converted to datetime."
+        )
 
     # ---------------------------------------------------------
     # Create / get Feature Group
@@ -87,11 +121,15 @@ def upload_feature_group():
     # ---------------------------------------------------------
     # Upload data
     # ---------------------------------------------------------
-    logger.info(f"Uploading {len(df)} rows...")
+    logger.info(
+        f"Uploading {len(df)} rows..."
+    )
 
     fg.insert(df)
 
-    logger.info("Feature upload completed successfully!")
+    logger.info(
+        "Feature upload completed successfully!"
+    )
 
 
 if __name__ == "__main__":
