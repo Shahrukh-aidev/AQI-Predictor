@@ -12,28 +12,33 @@ from src.utils.logger import logger
 def normalize_column_names(df):
     """Normalize DataFrame column names for Hopsworks compatibility."""
     df = df.copy()
+
     df.columns = [
-        re.sub(r"[^a-z0-9]+", "_", str(col).strip().lower())
-        .strip("_")
+        re.sub(
+            r"[^a-z0-9]+",
+            "_",
+            str(col).strip().lower(),
+        ).strip("_")
         for col in df.columns
     ]
+
     return df
 
 
 def build_feature_group_name():
-    """Build a run-specific feature group name to avoid stale Hopsworks metadata."""
-    run_id = os.getenv("GITHUB_RUN_ID") or os.getenv("GITHUB_RUN_NUMBER")
-    if run_id:
-        return f"aqi_features_{run_id}"
+    """
+    Use a stable feature group name.
 
-    timestamp = pd.Timestamp.utcnow().strftime("%Y%m%d%H%M%S")
-    return f"aqi_features_{timestamp}"
+    We don't create a new feature group for every retry.
+    """
+    return "aqi_features"
 
 
 def upload_feature_group():
-    # ---------------------------------------------------------
-    # Load environment variables
-    # ---------------------------------------------------------
+    # =========================================================
+    # 1. Environment
+    # =========================================================
+
     load_dotenv()
 
     api_key = os.getenv("HOPSWORKS_API_KEY")
@@ -45,9 +50,10 @@ def upload_feature_group():
     if not project_name:
         raise ValueError("HOPSWORKS_PROJECT_NAME is not set")
 
-    # ---------------------------------------------------------
-    # Connect to Hopsworks
-    # ---------------------------------------------------------
+    # =========================================================
+    # 2. Connect to Hopsworks
+    # =========================================================
+
     logger.info("Connecting to Hopsworks...")
 
     project = hopsworks.login(
@@ -55,114 +61,155 @@ def upload_feature_group():
         project=project_name,
     )
 
-    fs = project.get_feature_store()
+    try:
+        fs = project.get_feature_store()
 
-    # ---------------------------------------------------------
-    # Load training data
-    # ---------------------------------------------------------
-    logger.info("Loading training data...")
+        # =====================================================
+        # 3. Load training data
+        # =====================================================
 
-    data_path = "data/processed/training_data.parquet"
+        logger.info("Loading training data...")
 
-    if not os.path.exists(data_path):
-        raise FileNotFoundError(
-            f"Training data not found: {data_path}"
+        data_path = "data/processed/training_data.parquet"
+
+        if not os.path.exists(data_path):
+            raise FileNotFoundError(
+                f"Training data not found: {data_path}"
+            )
+
+        df = pd.read_parquet(data_path)
+
+        if df.empty:
+            raise ValueError("Training data is empty")
+
+        logger.info(
+            f"Loaded {len(df)} rows and {len(df.columns)} columns"
         )
 
-    df = pd.read_parquet(data_path)
+        # =====================================================
+        # 4. Normalize columns
+        # =====================================================
 
-    if df.empty:
-        raise ValueError("Training data is empty")
+        df = normalize_column_names(df)
 
-    logger.info(
-        f"Loaded {len(df)} rows and {len(df.columns)} columns"
-    )
-
-    # ---------------------------------------------------------
-    # Clean column names
-    # ---------------------------------------------------------
-    df = normalize_column_names(df)
-
-    logger.info(
-        f"Columns: {df.columns.tolist()}"
-    )
-
-    # ---------------------------------------------------------
-    # Validate required columns
-    # ---------------------------------------------------------
-    required_columns = ["city", "timestamp"]
-
-    missing_columns = [
-        col for col in required_columns
-        if col not in df.columns
-    ]
-
-    if missing_columns:
-        raise ValueError(
-            f"Missing required columns: {missing_columns}"
+        logger.info(
+            f"Columns: {df.columns.tolist()}"
         )
 
-    # ---------------------------------------------------------
-    # Ensure timestamp is datetime
-    # ---------------------------------------------------------
-    df["timestamp"] = pd.to_datetime(
-        df["timestamp"],
-        errors="coerce",
-    )
+        # =====================================================
+        # 5. Validate required columns
+        # =====================================================
 
-    if df["timestamp"].isna().any():
-        raise ValueError(
-            "Some timestamp values could not be converted to datetime."
+        required_columns = [
+            "city",
+            "timestamp",
+        ]
+
+        missing_columns = [
+            column
+            for column in required_columns
+            if column not in df.columns
+        ]
+
+        if missing_columns:
+            raise ValueError(
+                f"Missing required columns: {missing_columns}"
+            )
+
+        # =====================================================
+        # 6. Clean timestamp
+        # =====================================================
+
+        df["timestamp"] = pd.to_datetime(
+            df["timestamp"],
+            errors="coerce",
         )
 
-    # ---------------------------------------------------------
-    # Create / get Feature Group
-    # ---------------------------------------------------------
-    logger.info("Creating feature group...")
+        if df["timestamp"].isna().any():
+            raise ValueError(
+                "Some timestamp values could not be converted "
+                "to datetime."
+            )
 
-    last_error = None
-    for attempt in range(3):
+        # =====================================================
+        # 7. Remove duplicate primary keys
+        # =====================================================
+
+        before = len(df)
+
+        df = df.drop_duplicates(
+            subset=["city", "timestamp"],
+            keep="last",
+        ).reset_index(drop=True)
+
+        removed = before - len(df)
+
+        if removed:
+            logger.info(
+                f"Removed {removed} duplicate "
+                f"(city, timestamp) rows"
+            )
+
+        # =====================================================
+        # 8. Create/get Feature Group
+        # =====================================================
+
         feature_group_name = build_feature_group_name()
-        logger.info(f"Creating feature group '{feature_group_name}'...")
+
+        logger.info(
+            f"Creating/getting feature group "
+            f"'{feature_group_name}'..."
+        )
+
+        fg = fs.get_or_create_feature_group(
+            name=feature_group_name,
+            version=1,
+            description="AQI prediction features",
+            primary_key=["city", "timestamp"],
+            event_time="timestamp",
+            online_enabled=False,
+            stream=False,
+            time_travel_format="HUDI",
+        )
+
+        logger.info(
+            f"Feature group ready: "
+            f"{fg.name}, version: {fg.version}"
+        )
+
+        # =====================================================
+        # 9. Upload
+        # =====================================================
+
+        logger.info(
+            f"Uploading {len(df)} rows..."
+        )
+
+        fg.insert(
+            df,
+            overwrite=True,
+            operation="upsert",
+            storage="offline",
+            write_options={
+                "wait_for_job": True,
+            },
+            validation_options={
+                "run_validation": False,
+                "save_report": False,
+            },
+        )
+
+        logger.info(
+            "Feature upload completed successfully!"
+        )
+
+    finally:
+        logger.info("Closing Hopsworks connection...")
 
         try:
-            fg = fs.get_or_create_feature_group(
-                name=feature_group_name,
-                version=1,
-                description="AQI prediction features",
-                primary_key=["city", "timestamp"],
-                event_time="timestamp",
-                online_enabled=False,
-                stream=False,
-            )
-
-            logger.info(
-                f"Feature group: {fg.name}, "
-                f"version: {fg.version}"
-            )
-
-            logger.info(
-                f"Uploading {len(df)} rows..."
-            )
-
-            fg.insert(
-                df,
-                overwrite=True,
-                operation="insert",
-                write_options={"wait_for_job": True},
-            )
-            logger.info(
-                "Feature upload completed successfully!"
-            )
-            return
-        except Exception as exc:
-            last_error = exc
-            logger.warning(
-                f"Upload attempt {attempt + 1} failed: {exc}. Retrying with a fresh feature group name..."
-            )
-            time.sleep(5)
-
-    raise RuntimeError(f"Feature upload failed after 3 attempts: {last_error}")
+            project.close()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

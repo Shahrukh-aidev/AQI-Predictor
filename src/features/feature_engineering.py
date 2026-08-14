@@ -30,7 +30,7 @@ CITY_NAME_MAP = {
     "lahore us embassy, pakistan": "Lahore",
     "karachi, pakistan": "Karachi",
     "islamabad, pakistan": "Islamabad",
-    "sukkur, pakistan": "Sukkur",
+    # "sukkur, pakistan": "Sukkur",
 }
 
 

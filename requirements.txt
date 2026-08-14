@@ -32,3 +32,4 @@ pytest
 # Notebook
 jupyter
 ipykernel
+scikit-learn
