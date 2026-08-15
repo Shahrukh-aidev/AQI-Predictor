@@ -1,0 +1,53 @@
+name: Live AQI Inference
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    # Every hour at 5 minutes past the hour
+    - cron: "5 * * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  live-inference:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install inference dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify environment
+        run: |
+          python --version
+          python -c "import hopsworks; print('Hopsworks:', hopsworks.__version__)"
+
+      - name: Download production models
+        env:
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+          HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
+        run: |
+          python -m src.models.download_production_models
+
+      - name: Run live AQI inference
+        env:
+          OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+        run: |
+          python -m src.models.live_predictor
+
+      - name: Display prediction output
+        run: |
+          echo "===== predictions/latest.json ====="
+          cat predictions/latest.json
