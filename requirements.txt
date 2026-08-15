@@ -33,3 +33,5 @@ pytest
 jupyter
 ipykernel
 scikit-learn
+
+streamlit

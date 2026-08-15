@@ -28,3 +28,5 @@ install*.log
 # Jupyter
 .ipynb_checkpoints/
 predictions/
+
+/data/processed/*.parquet
