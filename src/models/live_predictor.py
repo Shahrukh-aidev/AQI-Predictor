@@ -82,21 +82,17 @@ MAX_AQI_AGE_HOURS = 12
 # timeline. Larger gaps remain missing.
 MAX_INTERPOLATION_GAP_HOURS = 6
 
-# OpenAQ fallback sensor discovery.
-# The default radius was too small for these cities. Some active
-# PM2.5 stations exist just outside the narrow search radius and
-# only a few days old, so we relax the search window to keep the
-# live pipeline robust.
-OPENAQ_SENSOR_SEARCH_RADIUS_M = 100_000
+# OpenAQ currently limits location-search radius to 25 km.
+OPENAQ_SENSOR_SEARCH_RADIUS_M = 25_000
+
+# Maximum age allowed for a fallback sensor discovery.
 OPENAQ_SENSOR_MAX_AGE_HOURS = 168
 
-# Weather can be matched to the latest valid AQI observation
-# if the timestamps differ by up to this amount.
+# Weather can be matched to the latest AQI observation
+# if timestamps differ by up to this amount.
 WEATHER_MATCH_TOLERANCE_HOURS = 6
 
-MODEL_DIR = Path(
-    "models/saved"
-)
+MODEL_DIR = Path("models/saved")
 
 PREDICTION_OUTPUT = Path(
     "predictions/latest.json"
@@ -130,7 +126,7 @@ CITY_COORDINATES = {
 
 
 # ============================================================
-# EXACT MODEL INPUT FEATURES
+# Exact model input features
 # ============================================================
 
 FEATURE_COLUMNS = [
@@ -185,7 +181,7 @@ HISTORICAL_FEATURE_COLUMNS = [
 
 
 # ============================================================
-# MODEL LOADING
+# Model loading
 # ============================================================
 
 def load_models() -> dict[int, object]:
@@ -211,7 +207,7 @@ def load_models() -> dict[int, object]:
 
 
 # ============================================================
-# OPENAQ SENSOR DISCOVERY
+# OpenAQ dynamic sensor discovery
 # ============================================================
 
 def discover_active_pm25_sensor(
@@ -222,11 +218,12 @@ def discover_active_pm25_sensor(
     Find a recently reporting PM2.5 sensor near a city.
 
     OpenAQ parameter ID 2 corresponds to PM2.5.
+
+    The API currently limits the radius to 25,000 meters,
+    so the request is explicitly capped at that value.
     """
 
-    coordinates = CITY_COORDINATES.get(
-        city
-    )
+    coordinates = CITY_COORDINATES.get(city)
 
     if coordinates is None:
         logger.warning(
@@ -235,20 +232,29 @@ def discover_active_pm25_sensor(
         )
         return None
 
+    # Never send a radius larger than OpenAQ's accepted limit.
+    search_radius = min(
+        int(OPENAQ_SENSOR_SEARCH_RADIUS_M),
+        25_000,
+    )
+
     params = {
         "coordinates": (
             f"{coordinates['latitude']},"
             f"{coordinates['longitude']}"
         ),
-        "radius": OPENAQ_SENSOR_SEARCH_RADIUS_M,
+        "radius": search_radius,
         "parameters_id": 2,
         "limit": 1000,
         "page": 1,
     }
 
     logger.info(
-        "Searching for active PM2.5 sensors near %s...",
-        city,
+        "OpenAQ discovery request: "
+        "coordinates=%s radius=%s parameters_id=%s",
+        params["coordinates"],
+        params["radius"],
+        params["parameters_id"],
     )
 
     try:
@@ -256,6 +262,7 @@ def discover_active_pm25_sensor(
             "/locations",
             params=params,
         )
+
     except Exception as exc:
         logger.warning(
             "OpenAQ sensor discovery failed for %s: %s",
@@ -305,13 +312,15 @@ def discover_active_pm25_sensor(
                 )
             ).lower()
 
-            if not (
+            is_pm25 = (
                 parameter_id == 2
                 or parameter_name in {
                     "pm25",
                     "pm2.5",
                 }
-            ):
+            )
+
+            if not is_pm25:
                 continue
 
             sensor_id = sensor.get(
@@ -348,9 +357,7 @@ def discover_active_pm25_sensor(
 
                 candidates.append(
                     {
-                        "sensor_id": int(
-                            sensor_id
-                        ),
+                        "sensor_id": int(sensor_id),
                         "location_id": location.get(
                             "id"
                         ),
@@ -363,12 +370,15 @@ def discover_active_pm25_sensor(
                 )
 
     if not candidates:
+
         logger.warning(
             "No recently reporting PM2.5 sensor found "
-            "near %s within %dh.",
+            "near %s within %dm and %dh.",
             city,
+            search_radius,
             OPENAQ_SENSOR_MAX_AGE_HOURS,
         )
+
         return None
 
     candidates.sort(
@@ -379,8 +389,8 @@ def discover_active_pm25_sensor(
     selected = candidates[0]
 
     logger.info(
-        "Selected PM2.5 sensor for %s: sensor=%s "
-        "location=%s latest=%s age=%.1fh",
+        "Selected PM2.5 sensor for %s: "
+        "sensor=%s location=%s latest=%s age=%.1fh",
         city,
         selected["sensor_id"],
         selected["location_id"],
@@ -392,7 +402,7 @@ def discover_active_pm25_sensor(
 
 
 # ============================================================
-# SENSOR PREPARATION
+# Ensure usable OpenAQ sensor
 # ============================================================
 
 def prepare_openaq_sensor(
@@ -481,6 +491,7 @@ def prepare_openaq_sensor(
             f"available for {city}."
         )
 
+    # Update only this client's in-memory configuration.
     client.CITY_SENSORS[
         city
     ]["pm25_sensor"] = discovered_sensor
@@ -493,7 +504,7 @@ def prepare_openaq_sensor(
 
 
 # ============================================================
-# FETCH RECENT AQI
+# Fetch recent AQI
 # ============================================================
 
 def fetch_recent_aqi(
@@ -548,7 +559,7 @@ def fetch_recent_aqi(
 
 
 # ============================================================
-# HOURLY AQI REGULARIZATION
+# Hourly AQI regularization
 # ============================================================
 
 def prepare_hourly_aqi_history(
@@ -557,11 +568,11 @@ def prepare_hourly_aqi_history(
     """
     Convert sparse OpenAQ observations to an hourly timeline.
 
-    Important:
-    - Real OpenAQ observations remain marked as actual.
-    - Short internal gaps are time-interpolated.
-    - Long gaps remain missing.
-    - The latest prediction anchor MUST be actual data.
+    Rules:
+        - Real OpenAQ observations remain marked as actual.
+        - Short internal gaps are interpolated.
+        - Long gaps remain missing.
+        - The final prediction anchor must be actual data.
     """
 
     df = aqi_history.copy()
@@ -598,14 +609,9 @@ def prepare_hourly_aqi_history(
         )
     )
 
-    # Keep the actual observation timestamps.
     actual_timestamps = set(
         df["timestamp"]
     )
-
-    # --------------------------------------------------------
-    # Create the hourly timeline.
-    # --------------------------------------------------------
 
     df = (
         df
@@ -629,7 +635,6 @@ def prepare_hourly_aqi_history(
 
     hourly.index.name = "timestamp"
 
-    # City is constant for this function.
     if "city" in df.columns:
 
         city_values = (
@@ -644,7 +649,7 @@ def prepare_hourly_aqi_history(
             )
 
     # --------------------------------------------------------
-    # Interpolate PM2.5 only across SHORT internal gaps.
+    # Interpolate PM2.5 only through short internal gaps.
     # --------------------------------------------------------
 
     hourly["pm25"] = (
@@ -656,19 +661,11 @@ def prepare_hourly_aqi_history(
         )
     )
 
-    # --------------------------------------------------------
-    # Calculate AQI from regularized PM2.5.
-    # --------------------------------------------------------
-
     hourly = hourly.reset_index()
 
     hourly = add_aqi_from_pm25(
         hourly
     )
-
-    # --------------------------------------------------------
-    # Mark actual vs interpolated rows.
-    # --------------------------------------------------------
 
     hourly["is_actual_aqi"] = (
         hourly["timestamp"].isin(
@@ -676,7 +673,6 @@ def prepare_hourly_aqi_history(
         )
     )
 
-    # Only AQI itself is needed for historical features.
     hourly = hourly.dropna(
         subset=["aqi"]
     )
@@ -693,7 +689,7 @@ def prepare_hourly_aqi_history(
 
 
 # ============================================================
-# CURRENT WEATHER
+# Current weather
 # ============================================================
 
 def fetch_current_weather(
@@ -720,7 +716,7 @@ def fetch_current_weather(
 
 
 # ============================================================
-# BUILD LIVE MODEL FEATURES
+# Build live model features
 # ============================================================
 
 def build_current_features(
@@ -731,12 +727,12 @@ def build_current_features(
     Construct the final one-row model input.
 
     Steps:
-        1. Regularize recent AQI history to hourly frequency.
-        2. Apply the existing feature-engineering functions.
-        3. Select the latest COMPLETE historical row that
-           corresponds to an ACTUAL OpenAQ observation.
-        4. Attach current OpenWeather values.
-        5. Validate all model inputs.
+
+        1. Regularize AQI history to hourly frequency.
+        2. Apply existing production feature engineering.
+        3. Find newest complete ACTUAL OpenAQ row.
+        4. Attach current weather.
+        5. Validate all model features.
     """
 
     weather = weather.copy()
@@ -755,9 +751,7 @@ def build_current_features(
 
     hourly_aqi = (
         hourly_aqi
-        .sort_values(
-            "timestamp"
-        )
+        .sort_values("timestamp")
         .reset_index(drop=True)
     )
 
@@ -771,14 +765,12 @@ def build_current_features(
 
     features = (
         features
-        .sort_values(
-            "timestamp"
-        )
+        .sort_values("timestamp")
         .reset_index(drop=True)
     )
 
     # --------------------------------------------------------
-    # Confirm expected historical features exist.
+    # Verify historical feature columns.
     # --------------------------------------------------------
 
     missing_historical = [
@@ -794,7 +786,7 @@ def build_current_features(
         )
 
     # --------------------------------------------------------
-    # Find complete historical rows.
+    # Find complete rows.
     # --------------------------------------------------------
 
     complete_rows = (
@@ -805,9 +797,7 @@ def build_current_features(
         .copy()
     )
 
-    # IMPORTANT:
-    # We only want a real OpenAQ observation to serve as the
-    # current anchor.
+    # Current prediction anchor must be a REAL observation.
     complete_rows = complete_rows[
         complete_rows["is_actual_aqi"]
     ].copy()
@@ -817,10 +807,6 @@ def build_current_features(
             "No actual OpenAQ observation has complete "
             "historical features after hourly regularization."
         )
-
-    # --------------------------------------------------------
-    # Latest actual complete row.
-    # --------------------------------------------------------
 
     latest = (
         complete_rows
@@ -836,7 +822,7 @@ def build_current_features(
     )
 
     # --------------------------------------------------------
-    # Check age.
+    # Check AQI age.
     # --------------------------------------------------------
 
     now = pd.Timestamp.now(
@@ -867,7 +853,7 @@ def build_current_features(
         )
 
     # --------------------------------------------------------
-    # Current weather.
+    # Prepare weather.
     # --------------------------------------------------------
 
     required_weather = [
@@ -917,7 +903,7 @@ def build_current_features(
     )
 
     # --------------------------------------------------------
-    # Attach current weather to latest actual AQI row.
+    # Attach weather to latest actual AQI row.
     # --------------------------------------------------------
 
     latest = pd.merge_asof(
@@ -931,7 +917,7 @@ def build_current_features(
     )
 
     # --------------------------------------------------------
-    # Check final model columns.
+    # Verify final model columns.
     # --------------------------------------------------------
 
     missing_model_columns = [
@@ -977,7 +963,7 @@ def build_current_features(
 
 
 # ============================================================
-# PREDICT ONE CITY
+# Predict one city
 # ============================================================
 
 def predict_city(
@@ -989,27 +975,15 @@ def predict_city(
     openaq = OpenAQClient()
     openweather = OpenWeatherClient()
 
-    # --------------------------------------------------------
-    # AQI history
-    # --------------------------------------------------------
-
     aqi_history = fetch_recent_aqi(
         openaq,
         city,
     )
 
-    # --------------------------------------------------------
-    # Current weather
-    # --------------------------------------------------------
-
     weather = fetch_current_weather(
         openweather,
         city,
     )
-
-    # --------------------------------------------------------
-    # Final model row
-    # --------------------------------------------------------
 
     features = build_current_features(
         aqi_history,
@@ -1020,9 +994,19 @@ def predict_city(
         FEATURE_COLUMNS
     ].copy()
 
-    # --------------------------------------------------------
-    # Prediction timestamp
-    # --------------------------------------------------------
+    if model_input.isna().any().any():
+
+        missing_columns = (
+            model_input.columns[
+                model_input.isna().any()
+            ]
+            .tolist()
+        )
+
+        raise ValueError(
+            "Missing model inputs: "
+            f"{missing_columns}"
+        )
 
     latest_timestamp = pd.to_datetime(
         features["timestamp"].iloc[0],
@@ -1034,10 +1018,6 @@ def predict_city(
     )
 
     predictions: dict[int, dict] = {}
-
-    # --------------------------------------------------------
-    # Day 1 / Day 2 / Day 3
-    # --------------------------------------------------------
 
     for horizon, model in models.items():
 
@@ -1085,7 +1065,7 @@ def predict_city(
 
 
 # ============================================================
-# SAVE
+# Save predictions
 # ============================================================
 
 def save_predictions(
@@ -1127,13 +1107,13 @@ def save_predictions(
 
 
 # ============================================================
-# DISPLAY
+# Display
 # ============================================================
 
 def print_success_result(
     result: dict,
 ) -> None:
-    """Print a successful forecast."""
+    """Print successful forecast."""
 
     print()
     print("=" * 68)
@@ -1141,8 +1121,7 @@ def print_success_result(
     print("=" * 68)
 
     print(
-        f"City              : "
-        f"{result['city']}"
+        f"City              : {result['city']}"
     )
 
     print(
@@ -1193,7 +1172,7 @@ def print_unavailable_result(
     city: str,
     reason: str,
 ) -> None:
-    """Print an unavailable city."""
+    """Print unavailable city status."""
 
     print()
     print("=" * 68)
@@ -1212,7 +1191,7 @@ def print_unavailable_result(
 
 
 # ============================================================
-# MAIN
+# Main
 # ============================================================
 
 def main() -> None:
@@ -1263,8 +1242,6 @@ def main() -> None:
                 reason,
             )
 
-            # Store the status so the dashboard can distinguish
-            # "unavailable" from "not processed".
             results.append(
                 {
                     "status": "unavailable",
@@ -1274,12 +1251,8 @@ def main() -> None:
                 }
             )
 
-    # --------------------------------------------------------
-    # Save ALL city statuses.
-    #
-    # This is deliberately not an all-or-nothing pipeline.
-    # --------------------------------------------------------
-
+    # Always write the JSON, even when one or more cities
+    # are unavailable.
     save_predictions(
         results
     )
@@ -1290,18 +1263,20 @@ def main() -> None:
         if result.get("status") == "success"
     )
 
-    unavailable = len(results) - successful
+    unavailable = (
+        len(results) - successful
+    )
 
     logger.info(
-        "Live inference completed: %d successful, "
-        "%d unavailable.",
+        "Live inference completed: "
+        "%d successful, %d unavailable.",
         successful,
         unavailable,
     )
 
 
 # ============================================================
-# ENTRY POINT
+# Entry point
 # ============================================================
 
 if __name__ == "__main__":
