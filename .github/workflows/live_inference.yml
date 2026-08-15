@@ -23,7 +23,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools wheel
 
-      - name: Install pinned inference dependencies
+      - name: Install core inference dependencies
         run: |
           pip install \
             numpy==1.26.4 \
@@ -33,9 +33,9 @@ jobs:
             requests==2.34.2 \
             python-dotenv==1.2.2
 
-      - name: Install Hopsworks
+      - name: Install Hopsworks Python client
         run: |
-          pip install hopsworks==5.0.3
+          pip install "hopsworks[python]==5.0.3"
 
       - name: Verify environment
         run: |
@@ -43,7 +43,12 @@ jobs:
           python -c "import numpy; print('NumPy:', numpy.__version__)"
           python -c "import pandas; print('Pandas:', pandas.__version__)"
           python -c "import sklearn; print('scikit-learn:', sklearn.__version__)"
+          python -c "import pyarrow; print('PyArrow:', pyarrow.__version__)"
           python -c "import hopsworks; print('Hopsworks:', hopsworks.__version__)"
+
+      - name: Verify Hopsworks Python engine
+        run: |
+          python -c "import hsfs; print('HSFS import: OK')"
 
       - name: Download production models
         env:
@@ -59,7 +64,7 @@ jobs:
         run: |
           python -m src.models.live_predictor
 
-      - name: Display predictions
+      - name: Display prediction output
         run: |
           echo "===== predictions/latest.json ====="
           cat predictions/latest.json
