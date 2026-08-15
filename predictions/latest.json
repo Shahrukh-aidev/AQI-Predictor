@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-08-15T14:14:46.413602+00:00",
+  "model": "Tuned Random Forest",
+  "forecasts": [
+    {
+      "status": "success",
+      "city": "Lahore",
+      "latest_observation": "2026-08-15T11:00:00+00:00",
+      "current_aqi": 110.0,
+      "predictions": {
+        "24": {
+          "forecast_timestamp": "2026-08-16T11:00:00+00:00",
+          "predicted_aqi": 98.38
+        },
+        "48": {
+          "forecast_timestamp": "2026-08-17T11:00:00+00:00",
+          "predicted_aqi": 92.04
+        },
+        "72": {
+          "forecast_timestamp": "2026-08-18T11:00:00+00:00",
+          "predicted_aqi": 90.71
+        }
+      }
+    },
+    {
+      "status": "unavailable",
+      "city": "Karachi",
+      "reason": "No active PM2.5 OpenAQ sensor is currently available for Karachi.",
+      "predictions": {}
+    },
+    {
+      "status": "unavailable",
+      "city": "Islamabad",
+      "reason": "No active PM2.5 OpenAQ sensor is currently available for Islamabad.",
+      "predictions": {}
+    }
+  ]
+}
