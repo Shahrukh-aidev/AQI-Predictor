@@ -2,9 +2,11 @@ name: Daily Training Pipeline
 
 on:
   schedule:
-    # Runs every day at 02:00 UTC
-    # After the hourly feature pipeline has fresh data
+    # Run every day at 02:00 UTC.
+    # The hourly feature pipeline runs throughout the day,
+    # so the Feature Store should already contain fresh data.
     - cron: "0 2 * * *"
+
   workflow_dispatch:
 
 jobs:
@@ -12,19 +14,69 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
+      # ------------------------------------------------------
+      # Checkout repository
+      # ------------------------------------------------------
+
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # ------------------------------------------------------
+      # Python
+      # ------------------------------------------------------
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            requirements-hopsworks.txt
+
+      # ------------------------------------------------------
+      # Dependencies
+      # ------------------------------------------------------
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-hopsworks.txt
-          pip install scikit-learn joblib numpy
+          pip install \
+            "numpy<2" \
+            "pandas<3" \
+            scikit-learn \
+            joblib \
+            pyarrow
+
+      # ------------------------------------------------------
+      # Environment verification
+      # ------------------------------------------------------
+
+      - name: Verify environment
+        run: |
+          python --version
+
+          python -c "
+          import numpy
+          import pandas
+          import sklearn
+          import joblib
+          import pyarrow
+          import hopsworks
+
+          print('numpy:', numpy.__version__)
+          print('pandas:', pandas.__version__)
+          print('scikit-learn:', sklearn.__version__)
+          print('joblib:', joblib.__version__)
+          print('pyarrow:', pyarrow.__version__)
+          print('hopsworks:', hopsworks.__version__)
+          "
+
+      # ------------------------------------------------------
+      # Run daily training
+      # ------------------------------------------------------
 
       - name: Run training pipeline
         env:
@@ -32,15 +84,45 @@ jobs:
           HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
           HOPSWORKS_FEATURE_GROUP_VERSION: "6"
         run: |
+          python -m py_compile src/pipelines/training_pipeline.py
           python -m src.pipelines.training_pipeline
+
+      # ------------------------------------------------------
+      # Upload training report
+      # ------------------------------------------------------
 
       - name: Upload metrics report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: training-metrics
+          name: training-metrics-${{ github.run_number }}
           path: models/training_metrics.json
+          if-no-files-found: warn
           retention-days: 30
 
-      - name: Confirm completion
-        run: echo "Training pipeline finished at $(date -u)"
+      # ------------------------------------------------------
+      # Summary
+      # ------------------------------------------------------
+
+      - name: Display training summary
+        if: always()
+        shell: bash
+        run: |
+          echo "========================================"
+          echo "Daily AQI Training Pipeline"
+          echo "========================================"
+          echo "Run number: $GITHUB_RUN_NUMBER"
+          echo "Commit: $GITHUB_SHA"
+          echo "Time: $(date -u)"
+
+          if [ -f models/training_metrics.json ]; then
+            echo ""
+            echo "===== TRAINING METRICS ====="
+            cat models/training_metrics.json
+          else
+            echo ""
+            echo "No training metrics report was generated."
+          fi
+
+          echo ""
+          echo "Training workflow finished."
