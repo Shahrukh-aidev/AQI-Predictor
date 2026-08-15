@@ -1,4 +1,4 @@
-name: Upload Features to Hopsworks
+﻿name: Upload AQI Features to Hopsworks
 
 on:
   workflow_dispatch:
@@ -19,31 +19,33 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install \
-            hopsworks \
-            deltalake \
-            python-dotenv \
-            pyarrow \
-            pandas \
-            numpy
+          pip install -r requirements-hopsworks.txt
 
       - name: Verify environment
         run: |
           python --version
-          python -c "import hopsworks, hsfs, deltalake; print('hopsworks:', hopsworks.__version__); print('hsfs:', hsfs.__version__); print('deltalake:', deltalake.__version__)"
+          python -c "
+          import hopsworks, pandas, numpy
+          print('hopsworks:', hopsworks.__version__)
+          print('pandas:   ', pandas.__version__)
+          print('numpy:    ', numpy.__version__)
+          "
 
       - name: Check training data
         run: |
           ls -lh data/processed/training_data.parquet
-          python -c "import pandas as pd; df=pd.read_parquet('data/processed/training_data.parquet'); print('Rows:', len(df)); print('Columns:', len(df.columns)); print(df.columns.tolist())"
+          python -c "
+          import pandas as pd
+          df = pd.read_parquet('data/processed/training_data.parquet')
+          print('Rows:   ', len(df))
+          print('Columns:', len(df.columns))
+          print(df.columns.tolist())
+          "
 
       - name: Upload features to Hopsworks
         env:
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
-          HOPSWORKS_PROJECT_NAME: ${{ secrets.HOPSWORKS_PROJECT_NAME }}
+          HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
+          HOPSWORKS_FEATURE_GROUP_VERSION: "6"
         run: |
-          if [ -z "$HOPSWORKS_API_KEY" ] || [ -z "$HOPSWORKS_PROJECT_NAME" ]; then
-            echo "Missing Hopsworks secrets; skipping upload."
-            exit 0
-          fi
           python -m src.features.hopsworks_upload
