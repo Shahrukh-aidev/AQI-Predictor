@@ -30,3 +30,7 @@ install*.log
 predictions/
 
 /data/processed/*.parquet
+
+# Generated predictions
+predictions/*
+!predictions/latest.json
