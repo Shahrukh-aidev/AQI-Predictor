@@ -35,3 +35,5 @@ predictions/
 predictions/*
 !predictions/
 !predictions/latest.json
+
+!predictions/latest.json
