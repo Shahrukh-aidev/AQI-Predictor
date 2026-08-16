@@ -1,143 +1,153 @@
 import pandas as pd
 
-from src.features.openmeteo_client import OpenMeteoClient
 
+def test_training_merge_uses_compatible_utc_timestamps():
+    """Verify AQI/weather timestamps are compatible for merge_asof."""
 
-# ============================================================
-# 1. Load historical AQI
-# ============================================================
+    # Small local AQI sample.
+    aqi_df = pd.DataFrame(
+        {
+            "timestamp": [
+                "2026-07-01T00:00:00Z",
+                "2026-07-01T01:00:00Z",
+            ],
+            "city": [
+                "Lahore",
+                "Lahore",
+            ],
+            "aqi": [
+                50.0,
+                60.0,
+            ],
+            "pm25": [
+                12.0,
+                15.0,
+            ],
+        }
+    )
 
-aqi_df = pd.read_parquet(
-    "data/processed/historical_aqi.parquet"
-)
+    # Small local weather sample.
+    weather_df = pd.DataFrame(
+        {
+            "timestamp": [
+                "2026-07-01T00:15:00Z",
+                "2026-07-01T01:15:00Z",
+            ],
+            "city": [
+                "Lahore",
+                "Lahore",
+            ],
+            "temperature": [
+                30.0,
+                31.0,
+            ],
+            "humidity": [
+                60.0,
+                61.0,
+            ],
+            "pressure": [
+                1005.0,
+                1006.0,
+            ],
+            "wind_speed": [
+                10.0,
+                11.0,
+            ],
+            "wind_direction": [
+                180.0,
+                190.0,
+            ],
+            "rain_1h": [
+                0.0,
+                0.0,
+            ],
+            "rain_3h": [
+                0.0,
+                0.0,
+            ],
+        }
+    )
 
-print("\nAQI dataset:")
-print(aqi_df.shape)
-print(aqi_df.columns.tolist())
+    # --------------------------------------------------------
+    # Normalize both timestamp columns to exactly the same
+    # timezone-aware nanosecond dtype.
+    # --------------------------------------------------------
 
+    aqi_df["timestamp"] = (
+        pd.to_datetime(
+            aqi_df["timestamp"],
+            utc=True,
+            errors="coerce",
+        )
+        .astype("datetime64[ns, UTC]")
+    )
 
-# ============================================================
-# 2. Fetch Open-Meteo historical weather
-# ============================================================
+    weather_df["timestamp"] = (
+        pd.to_datetime(
+            weather_df["timestamp"],
+            utc=True,
+            errors="coerce",
+        )
+        .astype("datetime64[ns, UTC]")
+    )
 
-client = OpenMeteoClient()
+    # --------------------------------------------------------
+    # Verify timestamp compatibility.
+    # --------------------------------------------------------
 
-weather_df = client.fetch_multiple_cities(
-    cities=["Lahore", "Karachi", "Islamabad"],
-    start_date=aqi_df["timestamp"].min().date(),
-    end_date=aqi_df["timestamp"].max().date(),
-)
+    assert str(aqi_df["timestamp"].dtype) == "datetime64[ns, UTC]"
+    assert str(weather_df["timestamp"].dtype) == "datetime64[ns, UTC]"
 
-print("\nWeather dataset:")
-print(weather_df.shape)
+    # --------------------------------------------------------
+    # Sort for merge_asof.
+    # --------------------------------------------------------
 
+    aqi_df = (
+        aqi_df
+        .sort_values(
+            ["timestamp", "city"]
+        )
+        .reset_index(drop=True)
+    )
 
-# ============================================================
-# 3. Standardize timestamps
-# ============================================================
+    weather_df = (
+        weather_df
+        .sort_values(
+            ["timestamp", "city"]
+        )
+        .reset_index(drop=True)
+    )
 
-aqi_df["timestamp"] = pd.to_datetime(
-    aqi_df["timestamp"],
-    utc=True,
-)
+    # --------------------------------------------------------
+    # Perform the same merge strategy used by the project.
+    # --------------------------------------------------------
 
-weather_df["timestamp"] = pd.to_datetime(
-    weather_df["timestamp"],
-    utc=True,
-)
+    merged = pd.merge_asof(
+        aqi_df,
+        weather_df,
+        on="timestamp",
+        by="city",
+        direction="nearest",
+        tolerance=pd.Timedelta("30min"),
+    )
 
+    # --------------------------------------------------------
+    # Validate merge.
+    # --------------------------------------------------------
 
-# ============================================================
-# 4. Sort for merge_asof
-# ============================================================
+    assert not merged.empty
+    assert len(merged) == 2
 
-aqi_df = aqi_df.sort_values(
-    ["timestamp", "city"]
-).reset_index(drop=True)
+    required_weather_columns = [
+        "temperature",
+        "humidity",
+        "pressure",
+        "wind_speed",
+        "wind_direction",
+        "rain_1h",
+        "rain_3h",
+    ]
 
-weather_df = weather_df.sort_values(
-    ["timestamp", "city"]
-).reset_index(drop=True)
-
-
-# ============================================================
-# 5. Merge AQI with nearest weather observation
-# ============================================================
-
-merged = pd.merge_asof(
-    aqi_df,
-    weather_df,
-    on="timestamp",
-    by="city",
-    direction="nearest",
-    tolerance=pd.Timedelta("30min"),
-)
-
-
-# ============================================================
-# 6. Check merge quality
-# ============================================================
-
-print("\nMerged dataset:")
-print(merged.shape)
-
-print("\nColumns:")
-print(merged.columns.tolist())
-
-print("\nRows per city:")
-print(merged["city"].value_counts())
-
-print("\nMissing weather values after merge:")
-weather_columns = [
-    "temperature",
-    "humidity",
-    "pressure",
-    "wind_speed",
-    "wind_direction",
-    "rain_1h",
-    "rain_3h",
-]
-
-print(
-    merged[weather_columns].isna().sum()
-)
-
-print("\nMissing AQI values:")
-print(merged["aqi"].isna().sum())
-
-
-# ============================================================
-# 7. Display sample
-# ============================================================
-
-print("\nSample:")
-print(
-    merged[
-        [
-            "timestamp",
-            "city",
-            "aqi",
-            "pm25",
-            "pm10",
-            "temperature",
-            "humidity",
-            "pressure",
-            "wind_speed",
-            "rain_1h",
-        ]
-    ].head(10)
-)
-
-
-# ============================================================
-# 8. Save temporary merged dataset
-# ============================================================
-
-output_path = "data/processed/aqi_weather_merged.parquet"
-
-merged.to_parquet(
-    output_path,
-    index=False,
-)
-
-print(f"\nSaved: {output_path}")
+    for column in required_weather_columns:
+        assert column in merged.columns
+        assert merged[column].notna().all()
