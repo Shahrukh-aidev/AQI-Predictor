@@ -2,7 +2,3 @@ streamlit==1.50.0
 pandas==2.2.3
 numpy
 plotly
-scikit-learn
-joblib
-python-dotenv
-requests
