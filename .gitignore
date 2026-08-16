@@ -22,9 +22,7 @@ install*.log
 /models/
 # Jupyter
 .ipynb_checkpoints/
-predictions/
 /data/processed/*.parquet
-# Generated predictions
 predictions/*
 !predictions/
 !predictions/latest.json
