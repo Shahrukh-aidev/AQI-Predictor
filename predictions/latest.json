@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-17T17:37:28.001962+00:00",
+  "generated_at": "2026-08-17T18:53:03.750257+00:00",
   "model": "Tuned Random Forest",
   "forecasts": [
     {
@@ -10,15 +10,15 @@
       "predictions": {
         "24": {
           "forecast_timestamp": "2026-08-18T15:00:00+00:00",
-          "predicted_aqi": 84.13
+          "predicted_aqi": 84.34
         },
         "48": {
           "forecast_timestamp": "2026-08-19T15:00:00+00:00",
-          "predicted_aqi": 79.89
+          "predicted_aqi": 80.6
         },
         "72": {
           "forecast_timestamp": "2026-08-20T15:00:00+00:00",
-          "predicted_aqi": 87.4
+          "predicted_aqi": 88.17
         }
       }
     },
