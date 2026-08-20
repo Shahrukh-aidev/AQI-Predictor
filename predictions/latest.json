@@ -1,26 +1,12 @@
 {
-  "generated_at": "2026-08-20T01:46:37.225200+00:00",
+  "generated_at": "2026-08-20T03:06:40.653421+00:00",
   "model": "Tuned Random Forest",
   "forecasts": [
     {
-      "status": "success",
+      "status": "unavailable",
       "city": "Lahore",
-      "latest_observation": "2026-08-19T20:00:00+00:00",
-      "current_aqi": 41.0,
-      "predictions": {
-        "24": {
-          "forecast_timestamp": "2026-08-20T20:00:00+00:00",
-          "predicted_aqi": 81.88
-        },
-        "48": {
-          "forecast_timestamp": "2026-08-21T20:00:00+00:00",
-          "predicted_aqi": 77.66
-        },
-        "72": {
-          "forecast_timestamp": "2026-08-22T20:00:00+00:00",
-          "predicted_aqi": 86.61
-        }
-      }
+      "reason": "Final model row contains missing values: ['temperature', 'humidity', 'pressure', 'wind_speed', 'wind_direction', 'rain_1h', 'rain_3h']",
+      "predictions": {}
     },
     {
       "status": "unavailable",
