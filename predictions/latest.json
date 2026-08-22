@@ -1,24 +1,24 @@
 {
-  "generated_at": "2026-08-22T08:41:42.019757+00:00",
+  "generated_at": "2026-08-22T09:36:47.658703+00:00",
   "model": "Tuned Random Forest",
   "forecasts": [
     {
       "status": "success",
       "city": "Lahore",
-      "latest_observation": "2026-08-22T07:00:00+00:00",
-      "current_aqi": 107.0,
+      "latest_observation": "2026-08-22T08:00:00+00:00",
+      "current_aqi": 119.0,
       "predictions": {
         "24": {
-          "forecast_timestamp": "2026-08-23T07:00:00+00:00",
-          "predicted_aqi": 107.04
+          "forecast_timestamp": "2026-08-23T08:00:00+00:00",
+          "predicted_aqi": 101.96
         },
         "48": {
-          "forecast_timestamp": "2026-08-24T07:00:00+00:00",
-          "predicted_aqi": 98.59
+          "forecast_timestamp": "2026-08-24T08:00:00+00:00",
+          "predicted_aqi": 95.7
         },
         "72": {
-          "forecast_timestamp": "2026-08-25T07:00:00+00:00",
-          "predicted_aqi": 90.0
+          "forecast_timestamp": "2026-08-25T08:00:00+00:00",
+          "predicted_aqi": 91.8
         }
       }
     },
