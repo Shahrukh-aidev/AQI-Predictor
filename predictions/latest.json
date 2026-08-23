@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-08-23T16:37:16.617969+00:00",
+  "generated_at": "2026-08-23T17:29:15.072319+00:00",
   "model": "Tuned Random Forest",
   "forecasts": [
     {
       "status": "unavailable",
       "city": "Lahore",
-      "reason": "Latest complete actual AQI observation is 19.6 hours old. Maximum allowed age is 12 hours.",
+      "reason": "Latest complete actual AQI observation is 20.5 hours old. Maximum allowed age is 12 hours.",
       "predictions": {}
     },
     {
