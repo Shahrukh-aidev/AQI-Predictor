@@ -1,12 +1,26 @@
 {
-  "generated_at": "2026-08-24T07:16:09.532699+00:00",
+  "generated_at": "2026-08-24T08:59:31.195003+00:00",
   "model": "Tuned Random Forest",
   "forecasts": [
     {
-      "status": "unavailable",
+      "status": "success",
       "city": "Lahore",
-      "reason": "Latest complete actual AQI observation is 34.3 hours old. Maximum allowed age is 12 hours.",
-      "predictions": {}
+      "latest_observation": "2026-08-24T07:00:00+00:00",
+      "current_aqi": 97.0,
+      "predictions": {
+        "24": {
+          "forecast_timestamp": "2026-08-25T07:00:00+00:00",
+          "predicted_aqi": 95.46
+        },
+        "48": {
+          "forecast_timestamp": "2026-08-26T07:00:00+00:00",
+          "predicted_aqi": 100.67
+        },
+        "72": {
+          "forecast_timestamp": "2026-08-27T07:00:00+00:00",
+          "predicted_aqi": 86.84
+        }
+      }
     },
     {
       "status": "unavailable",
