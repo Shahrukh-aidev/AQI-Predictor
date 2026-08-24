@@ -1,12 +1,26 @@
 {
-  "generated_at": "2026-08-24T19:38:08.297572+00:00",
+  "generated_at": "2026-08-24T20:41:41.684720+00:00",
   "model": "Tuned Random Forest",
   "forecasts": [
     {
-      "status": "unavailable",
+      "status": "success",
       "city": "Lahore",
-      "reason": "Failed to communicate with OpenAQ API.",
-      "predictions": {}
+      "latest_observation": "2026-08-24T17:00:00+00:00",
+      "current_aqi": 127.0,
+      "predictions": {
+        "24": {
+          "forecast_timestamp": "2026-08-25T17:00:00+00:00",
+          "predicted_aqi": 111.43
+        },
+        "48": {
+          "forecast_timestamp": "2026-08-26T17:00:00+00:00",
+          "predicted_aqi": 112.22
+        },
+        "72": {
+          "forecast_timestamp": "2026-08-27T17:00:00+00:00",
+          "predicted_aqi": 99.47
+        }
+      }
     },
     {
       "status": "unavailable",
