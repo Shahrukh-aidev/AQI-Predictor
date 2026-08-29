@@ -1,7 +1,7 @@
 """
 OpenWeather API client for the AQI Predictor project.
 
-This module retrieves weather information from OpenWeather
+This module retrieves current weather information from OpenWeather
 and converts the API response into a pandas DataFrame.
 """
 
@@ -15,9 +15,7 @@ from src.utils.logger import logger
 
 
 class OpenWeatherClient:
-    """
-    Client for interacting with the OpenWeather API.
-    """
+    """Client for interacting with the OpenWeather API."""
 
     BASE_URL = "https://api.openweathermap.org/data/2.5/weather"
 
@@ -26,9 +24,7 @@ class OpenWeatherClient:
         api_key: Optional[str] = None,
         timeout: int = 10,
     ):
-        """
-        Initialize the OpenWeather client.
-        """
+        """Initialize the OpenWeather client."""
 
         self.api_key = api_key or OPENWEATHER_API_KEY
         self.timeout = timeout
@@ -39,7 +35,10 @@ class OpenWeatherClient:
                 "Add OPENWEATHER_API_KEY to your .env file."
             )
 
-    def fetch_city_weather(self, city: str) -> pd.DataFrame:
+    def fetch_city_weather(
+        self,
+        city: str,
+    ) -> pd.DataFrame:
         """
         Fetch current weather information for a city.
 
@@ -51,7 +50,7 @@ class OpenWeatherClient:
         Returns
         -------
         pandas.DataFrame
-            DataFrame containing weather information.
+            One-row DataFrame containing current weather data.
         """
 
         if not city or not city.strip():
@@ -69,7 +68,6 @@ class OpenWeatherClient:
         )
 
         try:
-
             response = requests.get(
                 self.BASE_URL,
                 params=params,
@@ -79,7 +77,6 @@ class OpenWeatherClient:
             response.raise_for_status()
 
         except requests.exceptions.Timeout as exc:
-
             logger.error(
                 "OpenWeather request timed out for city: %s",
                 city,
@@ -90,9 +87,9 @@ class OpenWeatherClient:
             ) from exc
 
         except requests.exceptions.RequestException as exc:
-
             logger.error(
-                "OpenWeather request failed: %s",
+                "OpenWeather request failed for %s: %s",
+                city,
                 exc,
             )
 
@@ -101,11 +98,9 @@ class OpenWeatherClient:
             ) from exc
 
         try:
-
             data = response.json()
 
         except ValueError as exc:
-
             logger.error(
                 "OpenWeather returned invalid JSON."
             )
@@ -117,18 +112,61 @@ class OpenWeatherClient:
         return self._parse_response(data)
 
     @staticmethod
-    def _parse_response(data: dict) -> pd.DataFrame:
+    def _parse_response(
+        data: dict,
+    ) -> pd.DataFrame:
         """
         Convert OpenWeather JSON response into a DataFrame.
+
+        OpenWeather provides `dt` as the actual observation time
+        in Unix seconds. That timestamp is used instead of the
+        local program execution time.
         """
 
-        main = data.get("main", {})
-        wind = data.get("wind", {})
-        rain = data.get("rain", {})
+        if not isinstance(data, dict):
+            raise ValueError(
+                "OpenWeather response must be a JSON object."
+            )
+
+        main = data.get("main") or {}
+        wind = data.get("wind") or {}
+        rain = data.get("rain") or {}
+
+        observation_timestamp = data.get("dt")
+
+        if observation_timestamp is None:
+            raise ValueError(
+                "OpenWeather response does not contain "
+                "an observation timestamp (`dt`)."
+            )
+
+        try:
+            timestamp = pd.to_datetime(
+                observation_timestamp,
+                unit="s",
+                utc=True,
+            )
+
+        except (
+            TypeError,
+            ValueError,
+            OverflowError,
+        ) as exc:
+            raise ValueError(
+                "Invalid OpenWeather observation timestamp."
+            ) from exc
+
+        city = data.get("name")
+
+        if not city:
+            raise ValueError(
+                "OpenWeather response does not contain "
+                "a city name."
+            )
 
         row = {
-            "timestamp": pd.Timestamp.now(tz="UTC"),
-            "city": data.get("name"),
+            "timestamp": timestamp,
+            "city": city,
             "temperature": main.get("temp"),
             "feels_like": main.get("feels_like"),
             "humidity": main.get("humidity"),
@@ -144,7 +182,19 @@ class OpenWeatherClient:
 
         dataframe["timestamp"] = pd.to_datetime(
             dataframe["timestamp"],
+            utc=True,
             errors="coerce",
+        )
+
+        if dataframe["timestamp"].isna().any():
+            raise ValueError(
+                "OpenWeather produced an invalid timestamp."
+            )
+
+        logger.info(
+            "OpenWeather observation for %s: timestamp=%s",
+            city,
+            timestamp,
         )
 
         return dataframe

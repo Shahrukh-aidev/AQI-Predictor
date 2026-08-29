@@ -90,7 +90,7 @@ OPENAQ_SENSOR_MAX_AGE_HOURS = 168
 
 # Weather can be matched to the latest AQI observation
 # if timestamps differ by up to this amount.
-WEATHER_MATCH_TOLERANCE_HOURS = 6
+WEATHER_MATCH_TOLERANCE_HOURS = 12
 
 MODEL_DIR = Path("models/saved")
 
