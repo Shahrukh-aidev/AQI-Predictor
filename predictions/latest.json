@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-09-03T23:58:37.659596+00:00",
+  "generated_at": "2026-09-04T04:19:58.272289+00:00",
   "model": "Tuned Random Forest",
   "forecasts": [
     {
       "status": "unavailable",
       "city": "Lahore",
-      "reason": "Latest complete actual AQI observation is 76.0 hours old. Maximum allowed age is 12 hours.",
+      "reason": "No active PM2.5 OpenAQ sensor is currently available for Lahore.",
       "predictions": {}
     },
     {
